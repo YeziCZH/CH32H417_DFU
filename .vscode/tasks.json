@@ -1,0 +1,69 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "⚙ CMake Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--fresh",
+                "-S", "${workspaceFolder}",
+                "-B", "${workspaceFolder}/build",
+                "-G", "Ninja",
+                "-DDFU_DEBUG_STAY_IN_DFU=OFF",
+                "-DDFU_FLASH_DEBUG_LOG=OFF"
+            ],
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
+            "label": "🔨 CMake Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build", "${workspaceFolder}/build",
+                "--", "-j8"
+            ],
+            "group": "none",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "🧹 CMake Clean",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build", "${workspaceFolder}/build",
+                "--target", "clean"
+            ],
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
+            "label": "📥 Erase + Flash (wlink)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}/scripts/flash.ps1"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
+            "label": "🔄 Configure + Build + Flash",
+            "dependsOn": [
+                "⚙ CMake Configure",
+                "🔨 CMake Build",
+                "📥 Erase + Flash (wlink)"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

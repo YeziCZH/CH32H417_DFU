@@ -1,0 +1,30 @@
+{
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "⚙ 配置",
+            "task": "⚙ CMake Configure",
+            "tooltip": "CMake 配置 (Ninja)"
+        },
+        {
+            "label": "🔨 编译",
+            "task": "🔨 CMake Build",
+            "tooltip": "编译 DFU Bootloader"
+        },
+        {
+            "label": "🧹 清理",
+            "task": "🧹 CMake Clean",
+            "tooltip": "清理构建文件"
+        },
+        {
+            "label": "📥 烧录",
+            "task": "📥 Erase + Flash (wlink)",
+            "tooltip": "Pin-RST 擦除 + wlink 烧录"
+        },
+        {
+            "label": "🔄 一键编译烧录",
+            "task": "🔄 Configure + Build + Flash",
+            "tooltip": "配置→编译→擦除→烧录 全流程"
+        }
+    ],
+    "cmake.ignoreCMakeListsMissing": true
+}

@@ -1,0 +1,37 @@
+# CMake and compiler output
+/build*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+*.o
+*.obj
+*.d
+*.elf
+*.hex
+*.map
+*.lst
+*.bin
+
+# Test and diagnostic output
+*.log
+*.out
+*.err
+readback*
+upload_test*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# IDE and local agent state
+.claude/
+.idea/
+*.user
+*.launch
+.DS_Store
+Thumbs.db
+
