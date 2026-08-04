@@ -10,54 +10,77 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Resolve-ProjectPath([string]$Path) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $Path))
+}
+
+$Firmware = Resolve-ProjectPath $Firmware
 
 if ([string]::IsNullOrWhiteSpace($Wlink)) {
-    $localWlink = "F:/wlink-win-x86/wlink.exe"
+    $localWlink = Join-Path $repoRoot "tools/wlink/wlink.exe"
     $pathWlink = Get-Command wlink.exe -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $localWlink) {
         $Wlink = $localWlink
     } elseif ($pathWlink) {
         $Wlink = $pathWlink.Source
     } else {
-        Write-Host "ERROR: wlink.exe not found. Add it to PATH or pass -Wlink." -ForegroundColor Red
+        Write-Host "ERROR: wlink.exe not found in tools/wlink, PATH, or -Wlink." -ForegroundColor Red
         exit 1
     }
+} elseif ([System.IO.Path]::IsPathRooted($Wlink)) {
+    $Wlink = [System.IO.Path]::GetFullPath($Wlink)
+} else {
+    $repoWlink = Resolve-ProjectPath $Wlink
+    $pathWlink = Get-Command $Wlink -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $repoWlink -PathType Leaf) {
+        $Wlink = $repoWlink
+    } elseif ($pathWlink) {
+        $Wlink = $pathWlink.Source
+    }
+}
+
+if (-not (Test-Path -LiteralPath $Wlink -PathType Leaf)) {
+    Write-Host "ERROR: wlink.exe not found: $Wlink" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  CH32H417 DFU Bootloader Flash" -ForegroundColor Cyan
 Write-Host "  Chip: $Chip  Dev: $Device  Speed: $Speed" -ForegroundColor Cyan
 Write-Host "  Image: $Firmware" -ForegroundColor Cyan
+Write-Host "  WLINK: $Wlink" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-if (-not (Test-Path $Firmware)) {
+if (-not (Test-Path -LiteralPath $Firmware -PathType Leaf)) {
     Write-Host "ERROR: Firmware not found: $Firmware" -ForegroundColor Red
-    Write-Host "Run '🔨 CMake Build' first." -ForegroundColor Yellow
+    Write-Host "Run the CMake Build task first." -ForegroundColor Yellow
     exit 1
 }
 
-$size = (Get-Item $Firmware).Length
+$size = (Get-Item -LiteralPath $Firmware).Length
 Write-Host "Firmware: $size bytes" -ForegroundColor Gray
 
 # ── Step 1: Pin-RST erase ─────────────────────────────────────────────
 Write-Host "`n[1/2] Reset and erase via pin-rst..." -ForegroundColor Yellow
-$result = & $Wlink -d $Device --chip $Chip erase --method pin-rst 2>&1
+& $Wlink -d $Device --chip $Chip erase --method pin-rst
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Erase failed!" -ForegroundColor Red
-    Write-Host $result
     exit $LASTEXITCODE
 }
 Write-Host "Erase done." -ForegroundColor Green
 
 # ── Step 2: Flash (no -e, already erased) ──────────────────────────────
 Write-Host "`n[2/2] Flashing @ $Address ..." -ForegroundColor Yellow
-$result = & $Wlink -d $Device --chip $Chip --speed $Speed flash --address $Address $Firmware 2>&1
+& $Wlink -d $Device --chip $Chip --speed $Speed flash --address $Address $Firmware
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Flash failed!" -ForegroundColor Red
-    Write-Host $result
     exit $LASTEXITCODE
 }
-Write-Host $result
 Write-Host "`n========================================" -ForegroundColor Green
 Write-Host "  Flash complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green

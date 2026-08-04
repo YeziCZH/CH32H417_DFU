@@ -39,12 +39,29 @@
             "problemMatcher": []
         },
         {
+            "label": "🔌 WLINK Probe List",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy", "Bypass",
+                "-File", "${workspaceFolder}/scripts/wlink.ps1",
+                "list"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
             "label": "📥 Erase + Flash (wlink)",
             "type": "shell",
             "command": "powershell",
             "args": [
                 "-ExecutionPolicy", "Bypass",
-                "-File", "${workspaceFolder}/scripts/flash.ps1"
+                "-File", "${workspaceFolder}/scripts/flash.ps1",
+                "-Firmware", "${workspaceFolder}/build/ch32h417_dfu.bin",
+                "-Wlink", "${workspaceFolder}/tools/wlink/wlink.exe"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

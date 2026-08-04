@@ -16,6 +16,11 @@
             "tooltip": "清理构建文件"
         },
         {
+            "label": "🔌 WLINK",
+            "task": "🔌 WLINK Probe List",
+            "tooltip": "列出已连接的 WCH-Link 调试器"
+        },
+        {
             "label": "📥 烧录",
             "task": "📥 Erase + Flash (wlink)",
             "tooltip": "Pin-RST 擦除 + wlink 烧录"

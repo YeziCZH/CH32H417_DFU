@@ -23,3 +23,12 @@
 WCH 文件保留原始版权声明。使用和再分发时应同时遵守 WCH 提供这些文件时附带的
 许可条款及适用法规。
 
+## wlink
+
+- 名称：ch32-rs/wlink 0.1.2，Windows x86 native-driver build
+- 上游项目：https://github.com/ch32-rs/wlink
+- 许可证：MIT OR Apache-2.0
+- 本仓库范围：`tools/wlink/wlink.exe` 及其上游说明和许可证
+- SHA-256：`55A20C7D4B70E6A5729A901CBC0EF3BEA4D6222D6BE824F9635AE28C674745F4`
+
+许可证全文见 `tools/wlink/LICENSE-MIT` 和 `tools/wlink/LICENSE-APACHE`。

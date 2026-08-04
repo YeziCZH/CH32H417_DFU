@@ -11,6 +11,6 @@
 *.txt  text eol=lf
 
 *.bin binary
+*.exe binary
 *.elf binary
 *.hex text eol=lf
-

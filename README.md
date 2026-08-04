@@ -357,6 +357,7 @@ target/address/busy 错误，`PE/PX/PD` 表示 erase poll 开始/失败/完成�
 - CMake Configure
 - CMake Build
 - CMake Clean
+- WLINK Probe List
 - Erase + Flash (wlink)
 - Configure + Build + Flash
 
@@ -381,8 +382,22 @@ powershell -ExecutionPolicy Bypass -File scripts/flash.ps1
 1. `wlink erase --method pin-rst`，通过 NRST 连接并擦除。
 2. `wlink flash --address 0x08000000`，写入 Bootloader。
 
-脚本会优先使用当前测试机的 `F:/wlink-win-x86/wlink.exe`，其他环境从 PATH 查找
-`wlink.exe`，也可以通过 `-Wlink D:/path/to/wlink.exe` 显式指定。
+仓库已在 `tools/wlink/wlink.exe` 集成 Windows x86 版 wlink 0.1.2，克隆仓库后不再
+依赖 `F:` 盘固定路径或全局 PATH。`flash.ps1` 会优先使用该副本；也可以通过
+`-Wlink D:/path/to/wlink.exe` 显式覆盖，仓库相对路径同样有效。固件参数也会相对
+仓库根目录解析，因此从任意当前工作目录调用脚本均可使用默认配置。
+
+通用 WLINK 命令可通过包装脚本执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 --version
+powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 list
+powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 `
+  -d 0 --chip CH32H41X status
+```
+
+工具来源、版本、SHA-256 和许可证见 [tools/wlink/README.md](tools/wlink/README.md)
+及 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 注意：该 `erase` 步骤应按整片擦除处理，原有 APP 和 APP 区数据会丢失。
 只需要更新 APP 时应使用 USB DFU，不要运行 Bootloader 烧录脚本。
@@ -632,6 +647,7 @@ CH32H417_DFU/
 |   `-- port/usb_dc_ch32h417_usbhs.c  CH32H417 USBHS DCD port
 |-- scripts/
 |   |-- flash.ps1                     pin-rst 擦除和 Bootloader 烧录
+|   |-- wlink.ps1                     仓库内 WLINK 通用命令包装器
 |   |-- dfu_download.py               Download/Upload 主机工具
 |   |-- dfu_test_support.py           回归测试共享 DFU 会话和数据工具
 |   |-- dfu_full_regression_16k.py    16 KB 布局主自动回归
@@ -640,9 +656,11 @@ CH32H417_DFU/
 |   |-- dfu_power_loss_test.py        T18 断电与恢复两阶段测试
 |   |-- dfu_smoke_test.py             历史差分、恢复和边界专项测试
 |   `-- dfu_extended_test.py          历史标准 DFU/DfuSe/RMW 专项测试
+|-- tools/wlink/                      wlink 0.1.2 Windows x86 和许可证
 |-- tests/jump_app/                   RISC-V 指定 alias 跳转测试 APP
 |-- TEST_PLAN.md                      硬件测试计划与结果
-`-- CHERRYUSB_PORT_VALIDATION.md      CherryUSB port 验证范围
+|-- CHERRYUSB_PORT_VALIDATION.md      CherryUSB port 验证范围
+`-- THIRD_PARTY_NOTICES.md            第三方组件来源和许可证索引
 ```
 
 ## 已知限制和安全边界
