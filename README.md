@@ -10,12 +10,12 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 |---|---|
 | 目标芯片 | CH32H417ME，960 KB 内置 Flash，DBMODE=1 |
 | Bootloader 保留空间 | 16 KB |
-| 当前 Release 二进制 | 15732 字节 |
+| 当前 Release 二进制 | 15740 字节，严格限制在 16 KB 内 |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DFU 传输块 | 512 字节 |
 | Flash 擦除粒度 | 8 KB |
 | Flash 编程粒度 | 256 字节快速编程页 |
-| 硬件验证 | 16 KB 布局 T01-T18 已通过（T03 为 High-Speed）；T19 性能基线已记录 |
+| 硬件验证 | T01-T19、T21、T22、T24 已通过；T20、T23 尚未完成 |
 | CherryUSB port | 当前 DFU/EP0 用途已验证；通用非控制端点验证待补充 |
 | 512 KiB 下载性能 | 全量变化 119.0 KiB/s；完全相同差分 180.1 KiB/s |
 
@@ -23,7 +23,7 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 
 - [README.md](README.md)：工程概览、构建、烧录、调用和故障排查。
 - [DFU_PROTOCOL.md](DFU_PROTOCOL.md)：标准 DFU/DfuSe 请求、地址映射、状态轮询和跳转契约。
-- [TEST_PLAN.md](TEST_PLAN.md)：T01-T19 测试方法、硬件结果和性能基线。
+- [TEST_PLAN.md](TEST_PLAN.md)：T01-T24 测试方法、硬件结果和性能基线。
 - [CHERRYUSB_PORT_VALIDATION.md](CHERRYUSB_PORT_VALIDATION.md)：CH32H417 USBHS port 的已验证范围和待补项目。
 
 ## 最短调用流程
@@ -51,7 +51,7 @@ python scripts/dfu_download.py app.bin `
 - 支持 SETUP、Control IN、Control OUT、状态阶段和零长度包。
 - 支持多包 EP0 传输；DFU 单块 512 字节会拆分为多个 64 字节 USB 包。
 - 支持设备地址延迟生效、Endpoint Stall/Clear Stall、USB Bus Reset。
-- 支持 Suspend/Resume 事件转发和 USB deinit。
+- 支持 Suspend/Resume 事件转发和 USB deinit；跳转 APP 前恢复 SWJ 配置。
 - 已验证 USB High-Speed 枚举、DFU 控制请求、总线复位和重新枚举。
 
 通用 Bulk、Interrupt、Isochronous 和多端点并发尚未完成完整硬件验证，详见
@@ -179,7 +179,7 @@ CH32H417 不是 Cortex-M，APP 首地址不能解释为 `[MSP, Reset_Handler]`�
 
 默认物理执行地址是 `0x08004000`，对应 alias `0x00004000`。
 
-如果所选 APP 首字为 `0xE339E339` 或 `0x00000000`，manifestation 后不会跳入
+如果所选 APP 首字为 `0xE339E339`、`0x00000000` 或 `0xFFFFFFFF`，manifestation 后不会跳入
 空白 Flash，而是恢复到可继续操作的 `dfuIDLE`。
 
 ### 9. 串口和诊断
@@ -232,16 +232,31 @@ DfuSe interface string：
 ## Boot 流程
 
 1. V3F 启动并初始化系统时钟、延时和 USART1。
-2. 固件等待 500 ms，便于调试器连接。
-3. 检查 `.noinit_dfu` SRAM magic `0x44465521`。
-4. 检查 PA0 输入；当前实现中 PA0 为高电平时进入 DFU。
-5. 进入 DFU 后初始化 CherryUSB USBHS Device。
-6. DFU 主循环最长等待 300 秒。
-7. 成功 manifestation 后跳到默认或指定 APP。
-8. 未进入 DFU或 DFU 超时时，尝试跳到默认 APP。
+2. 固件打开 500 ms 启动窗口，便于调试器连接，也可通过调试串口请求 DFU。
+3. 检查固定 SRAM magic：地址 `0x201100FC`，值 `0x44465521`；命中后先清零。
+4. 检查 UART4 板级引脚：PC6/TX 持续输出高电平，PC7/RX 为下拉输入。PC6 与
+   PC7 短接，或由后级主控把 PC7 拉高，都会触发 DFU；PC7 悬空不会误触发。
+5. 启动窗口内调试串口 USART1/COM4 收到 Enter（`0x0D` 或 `0x0A`）或空格
+   （`0x20`）也会触发 DFU；APP 已经运行后需由 APP 写 magic/reset。
+6. 任一入口命中时初始化 CherryUSB USBHS Device；默认 APP 无效时也直接进入 DFU。
+7. DFU class 请求每次都会刷新 2 秒不活动计时器，正常 Download、Upload 和
+   GETSTATUS 轮询不会在传输中途退出。
+8. 2 秒没有 DFU 请求时取消未完成会话并尝试默认 APP；默认 APP 无效则继续 DFU。
+9. 成功 manifestation 后跳到默认或通过 `SET_EXEC_ADDRESS` 指定的 APP；指定入口
+   无效时恢复 `dfuIDLE` 并禁止 2 秒超时跳回其他 APP，直到有效 manifestation 或复位。
+   Flash 错误状态也不会触发超时启动，需由主机先执行 CLRSTATUS 恢复。
 
-`dfu_request_reboot()` 可在同一固件内部写入 SRAM magic 并触发系统复位，
-使下一次启动进入 DFU。它目前不是一个稳定的跨镜像 APP ABI。
+固定 magic 是 APP 到 Bootloader 的稳定 ABI，定义在 [User/dfu_boot.h](User/dfu_boot.h)。
+APP 可写入 magic、执行内存屏障并触发系统复位：
+
+```c
+*(volatile uint32_t *)DFU_BOOT_MAGIC_ADDRESS = DFU_BOOT_MAGIC_VALUE;
+__asm volatile("fence rw, rw" ::: "memory");
+NVIC_SystemReset();
+```
+
+Bootloader 内的 `dfu_request_reboot()` 实现了同一流程。该 4 字节区域由链接脚本
+单独保留，不会被 Bootloader 或使用本仓库链接脚本的 APP 的 `.data/.bss` 覆盖。
 
 ## APP 镜像要求
 
@@ -310,9 +325,8 @@ cmake --build build -- -j8
 - `build/ch32h417_dfu.lst`：反汇编列表。
 - `build/ch32h417_dfu.map`：链接映射。
 
-当前 Release `.bin` 为 15732 字节，满足 16 KB 限制。链接脚本已将
-`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败。当前约剩余 652 字节，
-新增发布功能前需要重新检查尺寸。
+当前 Release `.bin` 为 15740 字节，满足 16 KB 限制。链接脚本已将
+`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败；当前剩余 644 字节。
 
 ### 调试构建
 
@@ -330,7 +344,7 @@ cmake --build build -- -j8
 
 调试构建也使用同一 16 KB 链接边界。详细运行状态另外保留在
 `.noinit_dfu` 的 `dbg_dfu[6]` 中，可通过 SWD 读取。当前同时开启两个调试
-选项时 `.bin` 为 16232 字节，距离 16 KB 上限剩余 152 字节。
+选项时 `.bin` 为 16284 字节，也通过同一 16 KB 链接边界，剩余 100 字节。
 
 UART Flash 短标签：`P*` 表示 prepare，`E*` 表示 erase，`F*` 表示
 cache flush，`QW/QE` 表示写/擦除入队，`W*/E*` 中的 `T/A/B` 分别表示
@@ -373,8 +387,28 @@ powershell -ExecutionPolicy Bypass -File scripts/flash.ps1
 注意：该 `erase` 步骤应按整片擦除处理，原有 APP 和 APP 区数据会丢失。
 只需要更新 APP 时应使用 USB DFU，不要运行 Bootloader 烧录脚本。
 
-不要在此板上恢复独立的 `wlink reset halt` 步骤；USBHS 固件会关闭 SWJ，
-该命令曾返回 WCH-Link underlying protocol error `0x55`。
+USBHS 初始化期间会关闭 SWJ，因此设备仍运行在 DFU 且硬件处于 USBHS 档位时，
+独立执行 `wlink reset halt` 可能返回 WCH-Link underlying protocol error `0x55`。
+当前 port 会在 USB deinit、跳转 APP 前恢复 SWJ 配置；该恢复逻辑已通过构建，完整
+WLINK 卡死恢复硬件闭环仍列为 T23 待测。
+
+### APP 卡死恢复设计（T23 待完整硬件验证）
+
+恢复路径为 `WLINK RESET -> DFU 进入 -> 下载 APP -> manifestation 跳转`：
+
+1. 短接 PC6 (UART4 TX) 与 PC7 (UART4 RX) 并保持短接；也可以由后级主控持续
+   拉高 PC7。
+2. 切到 SWD 档位，通过 WLINK/NRST 复位设备；若 Bootloader 本身损坏，执行
+   `scripts/flash.ps1` 重新烧录 Bootloader。
+3. 切到 USBHS/DFU 档位后立即运行下载命令。2 秒计时按 DFU 请求刷新，下载开始后
+   不会因镜像传输时间超过 2 秒而退出。
+4. 下载 APP 并发送零长度 DNLOAD；入口有效时 Bootloader 自动跳转。
+5. 移除 PC6/PC7 短接或释放后级主控对 PC7 的高电平，否则下一次复位仍会进入 DFU。
+
+SWD 与 USBHS 复用，步骤 2 和 3 仍需手动切换硬件。若切换超过 2 秒且旧 APP 有效，
+设备会先启动旧 APP，需要重新执行 WLINK 复位；旧 APP 无效时设备会一直留在 DFU。
+当前已验证卡死测试 APP 可以下载并运行；尚未把恢复 SWJ 后的 WLINK 复位、DFU 进入、
+重新下载和跳转串成一次完整硬件闭环，因此此流程暂不作为已验证发布能力。
 
 ## Windows 主机环境
 
@@ -455,7 +489,7 @@ Release 构建不是 manifestation tolerant：
 3. 状态进入 `dfuMANIFEST-WAIT-RESET`。
 4. 等待约 50 ms。
 5. 若入口有效则 USB deinit 并跳转 APP。
-6. 若入口为空白则恢复 `dfuIDLE`，不会执行空白 Flash。
+6. 若入口无效则恢复 `dfuIDLE`，不会执行空白或非法 Flash。
 
 调试构建启用 `DFU_DEBUG_STAY_IN_DFU` 后，即使 APP 有效也会回到
 `dfuIDLE`，便于在一个 USB session 内连续运行测试。
@@ -618,10 +652,12 @@ CH32H417_DFU/
 - 当前没有整镜像 CRC/Hash 元数据；可靠性来自逐扇区写后校验和主机回读测试。
 - 更新不是整镜像原子事务。跨扇区下载时，已经切换过去的扇区可能已写入；
   manifestation 前断电可能留下新旧混合镜像或部分编程扇区。
-- Bootloader 不负责判定完整 APP 版本是否有效，只检查所选入口首字是否为空白。
+- Bootloader 不负责判定完整 APP 版本是否有效，只拒绝越界、未对齐，以及首字为
+  `0xE339E339`、`0x00000000` 或 `0xFFFFFFFF` 的入口。
 - 当前通用 CherryUSB port 尚未完成非 EP0 Bulk/Interrupt/Isochronous 验证。
 - USB Full-Speed 强制降速路径尚未做硬件验证。
-- DFU 主循环默认 300 秒超时，超时后会尝试启动 APP。
+- UART4 RX 高电平入口（T20）和完整 WLINK 卡死恢复流程（T23）尚未完成硬件验证。
+- DFU 使用 2 秒协议不活动超时；未完成会话会先取消，APP 无效时不会退出 DFU。
 
 生产使用前建议在 APP 镜像中增加独立的完整性元数据、版本策略和启动确认机制。
 
@@ -642,7 +678,8 @@ CH32H417_DFU/
 - 确认 Bootloader 已烧录。
 - 确认硬件开关已切到 USBHS/DFU。
 - 检查 Windows 是否绑定 WinUSB。
-- 检查 PA0 是否满足进入 DFU 的电平条件。
+- 检查 PC6/PC7 是否短接、后级主控是否把 PC7 拉高、启动窗口内是否向 COM4 发送
+  Enter/Space，或 APP 是否在复位前写入固定 magic。
 - 使用 COM4 115200 查看 Bootloader 日志。
 
 ### DFU 返回 errADDRESS
@@ -655,7 +692,7 @@ CH32H417_DFU/
 ### manifestation 后没有跳转
 
 - 确认构建选项 `DFU_DEBUG_STAY_IN_DFU=OFF`。
-- 检查 APP 首字不是 `0xE339E339` 或 `0x00000000`。
+- 检查 APP 首字不是 `0xE339E339`、`0x00000000` 或 `0xFFFFFFFF`。
 - 检查 APP Linker ORIGIN 是否等于物理地址减 `0x08000000`。
 - 通过 COM4 查看 `Leaving DFU mode` 和 `Jumping to APP` 日志。
 

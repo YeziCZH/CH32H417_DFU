@@ -7,6 +7,7 @@
 #include "usbd_dfu.h"
 
 struct usbd_dfu_priv {
+    volatile uint32_t activity_count;
     uint8_t state;
     uint8_t status;
     bool download_active;
@@ -173,6 +174,10 @@ static int dfu_class_interface_request_handler(uint8_t busid,
 {
     (void)busid;
 
+    /* Used by the boot policy as a protocol inactivity timer. Counting at
+     * handler entry also keeps error-recovery and state-poll requests alive. */
+    usbd_dfu_record_activity();
+
     if (setup->bRequest == DFU_REQUEST_GETSTATE) {
         (*data)[0] = g_dfu.state;
         *len = 1;
@@ -248,6 +253,7 @@ static void dfu_notify_handler(uint8_t busid, uint8_t event, void *arg)
     (void)busid;
     (void)arg;
     if (event == USBD_EVENT_RESET) {
+        usbd_dfu_record_activity();
         dfu_cancel();
         g_dfu.state = DFU_STATE_DFU_IDLE;
         g_dfu.status = DFU_STATUS_OK;
@@ -266,6 +272,16 @@ struct usbd_interface *usbd_dfu_init_intf(struct usbd_interface *intf)
 uint8_t usbd_dfu_get_state(void)
 {
     return g_dfu.state;
+}
+
+uint32_t usbd_dfu_get_activity_count(void)
+{
+    return g_dfu.activity_count;
+}
+
+void usbd_dfu_record_activity(void)
+{
+    g_dfu.activity_count++;
 }
 
 void usbd_dfu_force_idle(void)

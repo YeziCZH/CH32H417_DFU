@@ -1,7 +1,7 @@
 # CH32H417ME DFU 硬件测试计划
 
 本文记录 CH32H417ME 960 KB Flash、16 KB Bootloader 布局的测试方法和
-2026-08-03 硬件基线。协议细节见 [DFU_PROTOCOL.md](DFU_PROTOCOL.md)。
+2026-08-03 起的硬件基线。协议细节见 [DFU_PROTOCOL.md](DFU_PROTOCOL.md)。
 
 ## 测试对象
 
@@ -10,7 +10,7 @@
 | 芯片 | CH32H417ME V3F，960 KB Flash，DBMODE=1 |
 | Bootloader | `0x08000000..0x08003FFF`，16 KB |
 | APP | `0x08004000..0x080EFFFF`，944 KB |
-| Release 镜像 | `build/ch32h417_dfu.bin`，15732 字节 |
+| Release 镜像 | `build/ch32h417_dfu.bin`，15740 字节（上限 16384） |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DfuSe 描述符 | `@Flash/0x08004000/118*8Kg` |
 | 主机 | Windows、Python 3.11、PyUSB、libusb-package |
@@ -30,6 +30,10 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 - T19 已记录 512 KiB 全量变化、完全相同和三扇区变化的性能基线。
 - CherryUSB port 对本 DFU/EP0 用途已验证；通用非 EP0 端点不在本测试计划的
   已完成范围内。
+- 固定 magic、2 秒不活动超时和调试串口 Enter/Space 已于 2026-08-04 通过上板验证；
+  UART4 RX 高电平入口仍待单独验证，完整 WLINK 卡死恢复流程按当前计划暂缓。
+- USB deinit 已增加恢复 SWJ 配置的处理并通过构建；T15/T16 的 APP 跳转已验证，
+  但新增 SWJ 恢复处理尚未完成 T23 硬件闭环。
 
 ## 测试分组
 
@@ -39,6 +43,8 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 | 跳转验证 | T15、T16 | 需要准备测试 APP，并在 APP 运行后恢复 DFU |
 | 断电恢复 | T18 | 需要按脚本提示人工断电和恢复供电 |
 | 性能基线 | T19 | 否，但会覆盖指定 APP 测试区域 |
+| 启动入口 | T20-T22、T24 | T20 需要操作 UART4 引脚，其余项目已有硬件结果 |
+| 卡死恢复 | T23 | 已暂缓；恢复测试需要人工切换 SWD/USBHS |
 | 可选链路 | T03 Full-Speed | 需要 Full-Speed hub 或等效链路 |
 
 日常回归不要重复执行 T18。只有用户在设备旁并明确准备断电时，才运行
@@ -48,7 +54,7 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 
 | ID | 测试项目 | 方法与通过条件 | 当前结果 |
 |---|---|---|---|
-| T01 | 固件尺寸 | Release `.bin` 不超过 16 KB；链接脚本必须在超限时失败 | PASS，15732 B |
+| T01 | 固件尺寸 | Release `.bin` 不超过 16 KB；链接脚本必须在超限时失败 | PASS（15740 B） |
 | T02 | 目标容量 | 运行时目标检查接受有效 Flash 操作，末扇区 `0x080EE000..0x080EFFFF` 可擦写回读 | PASS |
 | T03 | USB 枚举 | 枚举为 `0483:DF11`，High-Speed，配置和控制请求无异常 Stall；可选 Full-Speed 路径另测 | PASS (HS)，FS 未跑 |
 | T04 | 擦除值 | 擦除 `0x08004000` 后 Upload，内容必须为 `39 E3 39 E3 ...`，即字 `0xE339E339` | PASS |
@@ -65,9 +71,14 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 | T14 | 错误恢复 | 非法访问进入 `dfuERROR` 并返回正确 bStatus；CLRSTATUS 后有效操作成功 | PASS |
 | T15 | 默认跳转 | 物理 `0x08004000` 跳到执行 alias `0x00004000`，APP 输出 PASS 日志 | PASS |
 | T16 | 指定地址跳转 | 物理 `0x08020000` 跳到执行 alias `0x00020000`，直接进入 RISC-V `_start` | PASS |
-| T17 | 空白 APP 保护 | 入口首字为 `0xE339E339` 或 `0` 时不执行，恢复/停留在 Bootloader | PASS |
+| T17 | 空白 APP 保护 | 入口首字为 `0xE339E339`、`0` 或 `0xFFFFFFFF` 时不执行，恢复/停留在 Bootloader | PASS |
 | T18 | 下载中断电 | manifestation 前断电，恢复后 Bootloader 可枚举并完成干净下载和回读 | PASS |
 | T19 | 下载性能 | 512 KiB 镜像测试全量变化、完全相同和三扇区变化，并在每组后完整回读校验 | PASS，见下表 |
+| T20 | UART4 电平入口 | PC7 悬空/低电平时有效 APP 正常启动；PC6/PC7 短接或后级主控拉高 PC7 时进入 DFU；PC6 始终为高 | 待硬件验证 |
+| T21 | Magic 入口 | APP 写 `0x201100FC=0x44465521` 后复位进入 DFU；magic 被一次性清除 | PASS |
+| T22 | 2 秒不活动超时 | 有效默认 APP 时约 2 秒退出；持续请求和长下载不退出；默认或指定入口无效时继续枚举 | PASS |
+| T23 | 卡死恢复 | WLINK 复位、UART4 RX 高电平进入、下载 APP、manifestation 跳转完整恢复 | 暂缓，未完成硬件闭环 |
+| T24 | 调试串口入口 | 启动 500 ms 窗口内向 COM4 发送 Enter 或空格进入 DFU；窗口外 APP 已运行时不由 Bootloader 监听 | PASS（Enter/Space） |
 
 ## T19 性能基线
 
@@ -118,6 +129,19 @@ powershell -ExecutionPolicy Bypass -File scripts/dfu_jump_test.ps1 `
   -Address 0x08020000 -ExecAddress 0x08020000 `
   -ExpectedAlias 0x00020000
 ```
+
+### Magic word 入口测试 APP
+
+```powershell
+cmake --fresh -S tests/jump_app -B build/jump_app_magic -G Ninja `
+  -DAPP_ALIAS=0x00004000 -DJUMP_APP_ENTER_DFU=ON
+cmake --build build/jump_app_magic -- -j8
+python scripts/dfu_download.py `
+  build/jump_app_magic/jump_app.bin --addr 0x08004000 --erase
+```
+
+让 PC7 保持低电平后运行此项，APP 日志应先出现 `Request DFU by magic`，随后复位并
+重新枚举 `0483:DF11`。主机应在 2 秒内开始发送 DFU 请求；测试完再下载普通 APP。
 
 ### 断电恢复
 

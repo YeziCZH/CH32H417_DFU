@@ -55,6 +55,12 @@ void serial_init(uint32_t baud) {
     tx_stalled = 0;
 }
 
+int serial_getc_nonblock(void) {
+    if (USART1->STATR & USART_STATR_RXNE)
+        return (int)(USART1->DATAR & 0xFFu);
+    return -1;
+}
+
 void serial_putc(char c) {
     uint32_t timeout = 1000000u;
 

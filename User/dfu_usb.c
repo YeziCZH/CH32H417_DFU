@@ -17,6 +17,7 @@ static uint8_t g_dfuse_addressing;
 static uint8_t g_manifest_reported;
 static uint8_t g_error_reported;
 static uint8_t g_wait_reset_ms;
+static uint8_t g_timeout_boot_blocked;
 
 static void reset_addressing(void)
 {
@@ -25,13 +26,14 @@ static void reset_addressing(void)
     g_dfuse_addressing = 0;
 }
 
-static int selected_app_blank(void)
+static int selected_app_valid(void)
 {
     uint32_t first_word;
 
     __asm volatile("fence" ::: "memory");
     first_word = *(volatile uint32_t *)g_exec_address;
-    return first_word == DFU_FLASH_ERASED_WORD || first_word == 0u;
+    return first_word != DFU_FLASH_ERASED_WORD && first_word != 0u &&
+           first_word != 0xFFFFFFFFu;
 }
 
 static void resume_dfu_idle(void)
@@ -71,8 +73,10 @@ static int block_address(uint16_t block, uint32_t *addr)
 static void usb_event_handler(uint8_t busid, uint8_t event)
 {
     (void)busid;
-    if (event == USBD_EVENT_CONFIGURED)
+    if (event == USBD_EVENT_CONFIGURED) {
+        usbd_dfu_record_activity();
         serial_puts("[USB] Configured\r\n");
+    }
 }
 
 void usbd_dfu_begin_load(void)
@@ -201,6 +205,7 @@ void dfu_usb_init(void)
 
     dfu_flash_begin();
     reset_addressing();
+    g_timeout_boot_blocked = 0;
     usbd_desc_register(0, &desc);
     usbd_dfu_init_intf(&intf);
     usbd_add_interface(0, &intf);
@@ -216,7 +221,7 @@ int dfu_usb_poll(void)
             serial_puts("[DFU] Flash media error; reporting through GETSTATUS\r\n");
             g_error_reported = 1;
         }
-        return 0;
+        return -1;
     }
 
     if (dfu_flash_all_done() &&
@@ -235,14 +240,16 @@ int dfu_usb_poll(void)
             g_wait_reset_ms++;
             return 0;
         }
-        if (selected_app_blank()) {
-            serial_puts("[DFU] Selected APP is blank; staying in DFU\r\n");
+        if (!selected_app_valid()) {
+            serial_puts("[DFU] Selected APP is invalid; staying in DFU\r\n");
             resume_dfu_idle();
+            g_timeout_boot_blocked = 1;
             return 0;
         }
 #if DFU_DEBUG_STAY_IN_DFU
         serial_puts("[DFU] Debug stay in DFU after manifest\r\n");
         resume_dfu_idle();
+        g_timeout_boot_blocked = 1;
         return 0;
 #else
         return 1;
@@ -250,4 +257,9 @@ int dfu_usb_poll(void)
     }
     g_wait_reset_ms = 0;
     return 0;
+}
+
+int dfu_usb_timeout_can_boot(void)
+{
+    return !g_timeout_boot_blocked;
 }

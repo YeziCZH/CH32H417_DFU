@@ -9,8 +9,9 @@ MEMORY
 {
     FLASH (rx)   : ORIGIN = 0x00000000, LENGTH = 16K
     RAM_CODE (xrw) : ORIGIN = 0x20100000, LENGTH = 64K
-    RAM (xrw)      : ORIGIN = (0x20110000+256), LENGTH = (448K-256-16K)
-    RAM_LOAD (xrw) : ORIGIN = 0x20110000, LENGTH = 256
+    RAM (xrw)       : ORIGIN = (0x20110000+256), LENGTH = (448K-256-16K)
+    RAM_LOAD (xrw)  : ORIGIN = 0x20110000, LENGTH = 252
+    DFU_MAGIC (rw)  : ORIGIN = 0x201100FC, LENGTH = 4
 }
 
 SECTIONS
@@ -179,7 +180,17 @@ SECTIONS
     PROVIDE( _end = _ebss);
     PROVIDE( end = . );
 
-    /* Noinit section for DFU magic word — NOT zeroed at startup */
+    /* Stable APP-to-bootloader ABI; SRAM is preserved across system reset. */
+    .dfu_magic (NOLOAD) :
+    {
+        KEEP(*(SORT_NONE(.dfu_magic)))
+        . = ORIGIN(DFU_MAGIC) + LENGTH(DFU_MAGIC);
+    } >DFU_MAGIC
+
+    ASSERT(SIZEOF(.dfu_magic) <= LENGTH(DFU_MAGIC), "DFU magic section overflow")
+    ASSERT(ADDR(.dfu_magic) == ORIGIN(DFU_MAGIC), "DFU magic address changed")
+
+    /* Diagnostic state retained across reset and not part of the public ABI. */
     .noinit_dfu (NOLOAD) :
     {
         . = ALIGN(4);

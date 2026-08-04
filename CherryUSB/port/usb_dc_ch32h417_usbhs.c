@@ -121,6 +121,10 @@ int usb_dc_deinit(uint8_t busid)
     (void)busid;
     NVIC_DisableIRQ(USBHS_IRQn);
     USBHSD->CONTROL = USBHS_UD_RST_SIE | USBHS_UD_RST_LINK;
+    /* usb_dc_init() releases the shared pins by disabling SWJ. Restore it
+     * before handing control to an application so WLINK can recover a
+     * stalled APP without requiring a full chip erase. */
+    GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
     ch32h417_usbhs_rcc_init(false);
     usb_dc_low_level_deinit();
     return 0;

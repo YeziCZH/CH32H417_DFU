@@ -5,7 +5,8 @@
 [CherryUSB/port/usb_dc_ch32h417_usbhs.c](CherryUSB/port/usb_dc_ch32h417_usbhs.c)
 已经满足本工程 USB High-Speed DFU Bootloader 的使用要求。EP0 枚举、控制传输、
 DFU Download/Upload、DfuSe 命令、总线复位、USB deinit 和 APP 跳转均已通过硬件
-验证。
+验证。USB deinit 现已增加 SWJ 恢复处理，代码和构建已确认；WLINK 卡死恢复的完整
+硬件闭环尚未完成，不能把这部分单独标记为已验证。
 
 这个结论不等于“CH32H417 CherryUSB 通用 DCD port 已全面认证”。Bulk、Interrupt、
 Isochronous、多端点并发、Full-Speed、远程唤醒和长稳测试仍需专用固件验证。
@@ -40,7 +41,7 @@ Isochronous、多端点并发、Full-Speed、远程唤醒和长稳测试仍需�
 | EP0 多包 | ISR 在固定 DMA 缓冲与 CherryUSB 请求缓冲之间按包复制 |
 | 地址设置 | SET_ADDRESS 状态阶段完成后延迟写入 `DEV_AD` |
 | 数据 Toggle | EP0 软件维护；非 EP0 非 Iso 使用硬件自动 Toggle |
-| SWD 影响 | USB 初始化会关闭 SWJ 引脚复用；本板 SWD/USBHS 还需要人工切换 |
+| SWD 影响 | USB 初始化会关闭 SWJ；USB deinit 会恢复 SWJ；本板仍需人工切换 SWD/USBHS |
 | Cache | CH32H417 本配置无数据 Cache，`USB_NOCACHE_RAM_SECTION` 为空 |
 
 EP0 DMA 地址不在 SETUP、Control OUT 和 Control IN 阶段动态切换。这一点来自 WCH
@@ -63,7 +64,7 @@ EP0 DMA 地址不在 SETUP、Control OUT 和 Control IN 阶段动态切换。这
 | 延迟设备地址生效 | 已实现 | 已验证 | 枚举稳定完成 |
 | EP0 Stall/Clear Stall | 已实现 | 部分验证 | 异常控制请求未影响后续回归；仍需独立 halt/clear-feature 测试 |
 | USB Bus Reset | 已实现 | 已验证 | reset/re-enumeration 后回到 `dfuIDLE` |
-| USB deinit | 已实现 | 已验证 | T15/T16 跳转 APP 成功 |
+| USB deinit | 已实现 | 部分验证 | T15/T16 跳转 APP 成功；新增 SWJ 恢复处理待 T23 闭环 |
 | Suspend/Resume 事件转发 | 已实现 | 未专项验证 | ISR 路径存在，需要总线挂起/恢复测试 |
 | Remote Wakeup | 已实现 | 未验证 | 需要支持远程唤醒的测试描述符和主机流程 |
 | LPM | 控制位已启用 | 未验证 | 需要 L1 进入/退出和长稳测试 |
@@ -84,13 +85,17 @@ EP0 DMA 地址不在 SETUP、Control OUT 和 Control IN 阶段动态切换。这
 - T07A/T10：多包 Control IN、短包和零长度 Upload 结束；
 - T12：大 block 编号下的连续 EP0 数据传输；
 - T13/T14：ABORT、CLRSTATUS、错误状态和后续恢复；
-- T15/T16：USB deinit 后 RISC-V APP 跳转；
+- T15/T16：USB deinit 后 RISC-V APP 跳转；SWJ 恢复调用已实现并通过构建；
 - T17：安全 manifestation 后恢复 `dfuIDLE`；
 - T18：断电后重新枚举和完整 Download/Upload；
 - T19：512 KiB、1024 个 DFU block 连续传输和完整 SHA-256 回读。
 
 详见 [TEST_PLAN.md](TEST_PLAN.md)。这些证据足以支持“当前 DFU 应用可用”，但不能
 替代非控制端点专项测试。
+
+T23 曾确认卡死测试 APP 可以下载并进入模拟死循环，随后暴露出旧版 deinit 未恢复
+SWJ 的问题。当前修复在 `usb_dc_deinit()` 中恢复 SWJ，但按当前测试安排暂不继续需要
+人工切换的恢复闭环，因此保留为部分验证。
 
 ## 完整通用验证方案
 

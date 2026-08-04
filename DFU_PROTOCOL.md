@@ -56,8 +56,30 @@ Class Interface 的 Host-to-Device `bmRequestType` 为 `0x21`，Device-to-Host �
 
 设备只枚举 Protocol `0x02` 的 DFU-mode interface，没有 Protocol `0x01` Runtime
 interface。尽管当前功能描述符的 `bmAttributes` 数值包含 Will Detach，主机不应把
-DETACH 当作可用的 Runtime 切换入口；进入 DFU 由 PA0 或固件内部 SRAM magic/reset
-流程决定。
+DETACH 当作可用的 Runtime 切换入口。进入 DFU 由 UART4 RX 高电平、调试串口
+Enter/Space、固定 SRAM magic/reset，或默认 APP 入口无效决定。
+
+## DFU 入口和不活动超时
+
+- 硬件入口：Bootloader 让 UART4 TX (PC6) 持续输出高电平，并把 RX (PC7) 配置为
+  下拉输入。短接 PC6/PC7 或由后级主控把 PC7 拉高时进入 DFU；PC7 悬空时保持低电平。
+- 调试串口入口：Bootloader 启动 500 ms 窗口内，USART1/COM4 RX 收到 Enter
+  （`0x0D` 或 `0x0A`）或空格（`0x20`）时进入 DFU。APP 已经运行后需要 APP
+  自行写 magic 并复位。
+- 软件入口：APP 向 `0x201100FC` 写入 `0x44465521`，执行 RISC-V `fence rw, rw`
+  后调用 `NVIC_SystemReset()`。Bootloader 读取后立即清除 magic。
+- 兜底入口：默认 APP `0x08004000` 入口越界、未对齐，或首字为 `0xE339E339`、
+  `0x00000000`、`0xFFFFFFFF` 时，无条件进入并保持 DFU。
+
+进入 DFU 后采用 2 秒协议不活动超时。每个 DFU class request，包括 GETSTATUS、
+GETSTATE、Download、Upload、CLRSTATUS 和 ABORT，都会重新计时，因此活动传输可持续
+超过 2 秒。超时会取消未完成的 Download/Upload 和未刷新的 RAM cache，并仅尝试
+默认 APP；默认 APP 首字无效时继续保持 DFU。
+
+若 manifestation 选择的执行入口无效，固件会锁定当前 DFU 会话，不再因 2 秒超时
+跳回另一个默认 APP。主机必须下载有效镜像并完成新的 manifestation，或复位设备。
+Flash 操作处于错误状态时同样禁止超时启动，主机通过 GETSTATUS 读取错误并用
+CLRSTATUS 恢复后，2 秒不活动计时才重新生效。
 
 主机每次 DNLOAD 或命令后必须循环 GETSTATUS，按照返回的三字节
 `bwPollTimeout` 等待，直到状态成为 `dfuDNLOAD-IDLE`。不要在设备仍为
@@ -119,7 +141,7 @@ ERASE 不修改 address pointer，SET_EXEC_ADDRESS 也不修改下载地址。�
 4. 每个 block 后轮询 GETSTATUS，等待 `dfuDNLOAD-IDLE`。
 5. 可选：发送 SET_EXEC_ADDRESS，并轮询完成。
 6. 发送零长度 DNLOAD，开始 manifestation。
-7. 轮询 GETSTATUS，直到设备跳转/断开，或因入口为空白而回到 `dfuIDLE`。
+7. 轮询 GETSTATUS，直到设备跳转/断开，或因入口无效而回到 `dfuIDLE`。
 
 主机工具示例：
 
@@ -169,17 +191,17 @@ Upload 只读取已经写入 Flash 的数据，不读取尚未 manifestation 的
 ## Manifestation 和 RISC-V 跳转
 
 Release 固件收到零长度 DNLOAD 后刷新最后一个脏扇区，等待约 50 ms，然后检查
-所选物理入口的首字：
+所选物理入口的地址和首字：
 
-- 首字为 `0xE339E339` 或 `0x00000000`：不执行，恢复到 `dfuIDLE`；
+- 首字为 `0xE339E339`、`0x00000000` 或 `0xFFFFFFFF`：不执行，恢复到 `dfuIDLE`；
 - 其他值：USB deinit，清理 SysTick/GPIO/USART/RCC，通过 Software IRQ 执行 `jr`
   跳到零基 alias。
 
 APP 镜像必须从其链接地址上的 RISC-V `_start` 指令开始。这里不存在 Cortex-M 的
-`[MSP, Reset_Handler]` 向量表解释。Bootloader 只检查首字是否为空白，不验证入口
+`[MSP, Reset_Handler]` 向量表解释。Bootloader 只做上述轻量入口检查，不验证入口
 是否真的是有效指令，也不验证完整镜像。
 
-SET_EXEC_ADDRESS 只影响当前 DFU 会话，不持久化。ABORT、总线 reset、空白入口返回
+SET_EXEC_ADDRESS 只影响当前 DFU 会话，不持久化。ABORT、总线 reset、无效入口返回
 DFU 或重新启动都会把地址状态恢复到默认 `0x08004000`。
 
 ## 状态和错误恢复

@@ -16,6 +16,8 @@ extern "C" {
 struct usbd_interface *usbd_dfu_init_intf(struct usbd_interface *intf);
 uint8_t usbd_dfu_get_state(void);
 void usbd_dfu_force_idle(void);
+uint32_t usbd_dfu_get_activity_count(void);
+void usbd_dfu_record_activity(void);
 
 void usbd_dfu_begin_load(void);
 void usbd_dfu_end_load(void);

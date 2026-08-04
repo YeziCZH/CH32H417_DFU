@@ -10,6 +10,7 @@
 void Delay_Init(void);
 void Delay_Ms(uint32_t n);
 void serial_init(uint32_t baud);
+int serial_getc_nonblock(void);
 void serial_putc(char c);
 void serial_puts(const char *s);
 void serial_hex(uint32_t val, int digits);
