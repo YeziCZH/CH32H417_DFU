@@ -1,6 +1,8 @@
 # Third-Party Components
 
-本仓库包含构建 CH32H417 DFU Bootloader 所需的第三方源码子集。
+本仓库包含构建 CH32H417 DFU Bootloader 所需的第三方源码和工具。根目录
+`LICENSE` 中的 Apache License 2.0 适用于本项目原创部分，不替代或覆盖以下组件的
+原始许可证、版权声明和授权条款。
 
 ## CherryUSB
 
@@ -21,7 +23,7 @@
 - 用途：CH32H417 启动文件、RISC-V Core 支持和外设驱动
 
 WCH 文件保留原始版权声明。使用和再分发时应同时遵守 WCH 提供这些文件时附带的
-许可条款及适用法规。
+许可条款及适用法规。根目录 Apache License 2.0 不对这些文件进行重新授权。
 
 ## wlink
 

@@ -10,6 +10,7 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 |---|---|
 | 目标芯片 | CH32H417ME，960 KB 内置 Flash，DBMODE=1 |
 | Bootloader 保留空间 | 16 KB |
+| 项目许可证 | Apache License 2.0（第三方组件除外） |
 | 当前 Release 二进制 | 15772 字节，严格限制在 16 KB 内 |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DFU 传输块 | 512 字节 |
@@ -25,6 +26,8 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 - [DFU_PROTOCOL.md](DFU_PROTOCOL.md)：标准 DFU/DfuSe 请求、地址映射、状态轮询和跳转契约。
 - [TEST_PLAN.md](TEST_PLAN.md)：T01-T24 测试方法、硬件结果和性能基线。
 - [CHERRYUSB_PORT_VALIDATION.md](CHERRYUSB_PORT_VALIDATION.md)：CH32H417 USBHS port 的已验证范围和待补项目。
+- [LICENSE](LICENSE)、[NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)：
+  项目许可证、版权声明和第三方组件授权信息。
 
 ## 最短调用流程
 
@@ -631,6 +634,8 @@ GETSTATUS 轮询和安全 manifestation，不包含准备与回读时间。
 
 ```text
 CH32H417_DFU/
+|-- LICENSE                            Apache License 2.0 全文
+|-- NOTICE                             项目版权和第三方归属声明
 |-- CMakeLists.txt                     主构建配置和 Release/Debug 选项
 |-- Ld/Link.ld                        Bootloader V3F 链接脚本，限制 16 KB
 |-- DFU_PROTOCOL.md                   主机协议、地址映射和状态机调用契约
@@ -681,6 +686,16 @@ CH32H417_DFU/
   未完成会话会先取消，APP 无效时不会退出 DFU。
 
 生产使用前建议在 APP 镜像中增加独立的完整性元数据、版本策略和启动确认机制。
+
+## 许可证
+
+本项目原创代码采用 [Apache License 2.0](LICENSE)，版权所有：
+`Copyright 2026 YeziCZH`。
+
+根目录许可证不重新授权仓库内的第三方组件。`CherryUSB/`、`Common/` 和
+`tools/wlink/` 分别遵循其原始许可证或授权条款，完整说明见 [NOTICE](NOTICE) 和
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。分发源码或二进制时应一并保留这些
+许可证、版权声明和第三方通知。
 
 ## 常见问题
 

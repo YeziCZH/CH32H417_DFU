@@ -1,0 +1,18 @@
+CH32H417 DFU Bootloader
+Copyright 2026 YeziCZH
+
+This product includes software from the CherryUSB project, licensed under
+the Apache License, Version 2.0.
+
+This product includes CH32H417 SDK files from Nanjing Qinheng
+Microelectronics Co., Ltd. (WCH). Those files retain their original
+copyright notices and are subject to the terms supplied by WCH.
+
+This distribution includes the ch32-rs/wlink executable, licensed under
+MIT OR Apache-2.0.
+
+See THIRD_PARTY_NOTICES.md and the license files in each third-party
+component directory for complete attribution and licensing information.
+
+The root Apache License, Version 2.0 applies to the original portions of
+this project. It does not replace or override third-party license terms.
