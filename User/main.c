@@ -12,7 +12,7 @@
 #include <string.h>
 
 #define APP_START_ADDR          DFU_FLASH_APP_BASE
-#define DFU_WAIT_MS             500u
+#define DFU_WAIT_MS             3000u
 #define DFU_DEFAULT_INACTIVITY_MS   2000u
 #define DFU_TRIGGER_INACTIVITY_MS   30000u
 
