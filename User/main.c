@@ -13,7 +13,8 @@
 
 #define APP_START_ADDR          DFU_FLASH_APP_BASE
 #define DFU_WAIT_MS             500u
-#define DFU_INACTIVITY_MS       2000u
+#define DFU_DEFAULT_INACTIVITY_MS   2000u
+#define DFU_TRIGGER_INACTIVITY_MS   30000u
 
 #define DFU_UART_PORT           GPIOC
 #define DFU_UART_TX_PIN         GPIO_Pin_6
@@ -23,7 +24,7 @@
 __attribute__((section(".dfu_magic"))) static volatile uint32_t g_dfu_magic;
 static uint8_t g_usb_active;
 
-static void dfu_mode(void);
+static void dfu_mode(uint32_t inactivity_timeout_ms);
 static void jump_to_app(uint32_t physical_addr);
 static int  wait_for_dfu_entry(void);
 static int  check_dfu_entry(void);
@@ -55,7 +56,8 @@ int main(void) {
         if (triggered || !app_entry_valid(APP_START_ADDR)) {
             if (!triggered)
                 serial_puts("[BOOT] Default APP is invalid; staying in DFU\r\n");
-            dfu_mode();
+            dfu_mode(triggered ? DFU_TRIGGER_INACTIVITY_MS :
+                       DFU_DEFAULT_INACTIVITY_MS);
         }
     }
 
@@ -131,12 +133,12 @@ static void dfu_entry_gpio_init(void)
     Delay_Ms(5);
 }
 
-static void dfu_mode(void) {
+static void dfu_mode(uint32_t inactivity_timeout_ms) {
     serial_puts("[DFU] Entering DFU mode...\r\n");
     dfu_usb_init();
     g_usb_active = 1;
     serial_puts("[DFU] Protocol inactivity timeout: ");
-    serial_dec(DFU_INACTIVITY_MS / 1000); serial_puts("s\r\n");
+    serial_dec(inactivity_timeout_ms / 1000); serial_puts("s\r\n");
 
     uint32_t inactive_ms = 0;
     uint32_t activity = usbd_dfu_get_activity_count();
@@ -155,7 +157,7 @@ static void dfu_mode(void) {
         if (activity != usbd_dfu_get_activity_count()) {
             activity = usbd_dfu_get_activity_count();
             inactive_ms = 0;
-        } else if (++inactive_ms >= DFU_INACTIVITY_MS) {
+        } else if (++inactive_ms >= inactivity_timeout_ms) {
             /* Timeout cancels an incomplete session. A custom execute address
              * is committed only by a successful manifestation. */
             usbd_dfu_force_idle();
@@ -185,7 +187,7 @@ static void jump_to_app(uint32_t physical_addr)
 {
     if (!app_entry_valid(physical_addr)) {
         serial_puts("[BOOT] APP entry is invalid; entering DFU\r\n");
-        dfu_mode();
+        dfu_mode(DFU_DEFAULT_INACTIVITY_MS);
         physical_addr = dfu_usb_get_exec_address();
     }
 

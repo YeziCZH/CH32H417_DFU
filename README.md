@@ -10,12 +10,12 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 |---|---|
 | 目标芯片 | CH32H417ME，960 KB 内置 Flash，DBMODE=1 |
 | Bootloader 保留空间 | 16 KB |
-| 当前 Release 二进制 | 15740 字节，严格限制在 16 KB 内 |
+| 当前 Release 二进制 | 15772 字节，严格限制在 16 KB 内 |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DFU 传输块 | 512 字节 |
 | Flash 擦除粒度 | 8 KB |
 | Flash 编程粒度 | 256 字节快速编程页 |
-| 硬件验证 | T01-T19、T21、T22、T24 已通过；T20、T23 尚未完成 |
+| 硬件验证 | T01-T19、T21、T24 已通过；T20、T22、T23 尚未完成 |
 | CherryUSB port | 当前 DFU/EP0 用途已验证；通用非控制端点验证待补充 |
 | 512 KiB 下载性能 | 全量变化 119.0 KiB/s；完全相同差分 180.1 KiB/s |
 
@@ -239,11 +239,13 @@ DfuSe interface string：
 5. 启动窗口内调试串口 USART1/COM4 收到 Enter（`0x0D` 或 `0x0A`）或空格
    （`0x20`）也会触发 DFU；APP 已经运行后需由 APP 写 magic/reset。
 6. 任一入口命中时初始化 CherryUSB USBHS Device；默认 APP 无效时也直接进入 DFU。
-7. DFU class 请求每次都会刷新 2 秒不活动计时器，正常 Download、Upload 和
-   GETSTATUS 轮询不会在传输中途退出。
-8. 2 秒没有 DFU 请求时取消未完成会话并尝试默认 APP；默认 APP 无效则继续 DFU。
-9. 成功 manifestation 后跳到默认或通过 `SET_EXEC_ADDRESS` 指定的 APP；指定入口
-   无效时恢复 `dfuIDLE` 并禁止 2 秒超时跳回其他 APP，直到有效 manifestation 或复位。
+7. DFU class 请求每次都会刷新不活动计时器，正常 Download、Upload 和 GETSTATUS
+   轮询不会在传输中途退出。
+8. 未显式触发、但默认 APP 无效而进入 DFU 时使用 2 秒超时；UART4 RX、调试串口或
+   SRAM magic 显式触发 DFU 时使用 30 秒超时，便于人工启动主机下载。
+9. 超时没有 DFU 请求时取消未完成会话并尝试默认 APP；默认 APP 无效则继续 DFU。
+10. 成功 manifestation 后跳到默认或通过 `SET_EXEC_ADDRESS` 指定的 APP；指定入口
+   无效时恢复 `dfuIDLE` 并禁止不活动超时跳回其他 APP，直到有效 manifestation 或复位。
    Flash 错误状态也不会触发超时启动，需由主机先执行 CLRSTATUS 恢复。
 
 固定 magic 是 APP 到 Bootloader 的稳定 ABI，定义在 [User/dfu_boot.h](User/dfu_boot.h)。
@@ -325,8 +327,8 @@ cmake --build build -- -j8
 - `build/ch32h417_dfu.lst`：反汇编列表。
 - `build/ch32h417_dfu.map`：链接映射。
 
-当前 Release `.bin` 为 15740 字节，满足 16 KB 限制。链接脚本已将
-`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败；当前剩余 644 字节。
+当前 Release `.bin` 为 15772 字节，满足 16 KB 限制。链接脚本已将
+`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败；当前剩余 612 字节。
 
 ### 调试构建
 
@@ -344,7 +346,7 @@ cmake --build build -- -j8
 
 调试构建也使用同一 16 KB 链接边界。详细运行状态另外保留在
 `.noinit_dfu` 的 `dbg_dfu[6]` 中，可通过 SWD 读取。当前同时开启两个调试
-选项时 `.bin` 为 16284 字节，也通过同一 16 KB 链接边界，剩余 100 字节。
+选项时 `.bin` 为 16316 字节，也通过同一 16 KB 链接边界，剩余 68 字节。
 
 UART Flash 短标签：`P*` 表示 prepare，`E*` 表示 erase，`F*` 表示
 cache flush，`QW/QE` 表示写/擦除入队，`W*/E*` 中的 `T/A/B` 分别表示
@@ -415,12 +417,12 @@ WLINK 卡死恢复硬件闭环仍列为 T23 待测。
    拉高 PC7。
 2. 切到 SWD 档位，通过 WLINK/NRST 复位设备；若 Bootloader 本身损坏，执行
    `scripts/flash.ps1` 重新烧录 Bootloader。
-3. 切到 USBHS/DFU 档位后立即运行下载命令。2 秒计时按 DFU 请求刷新，下载开始后
-   不会因镜像传输时间超过 2 秒而退出。
+3. 切到 USBHS/DFU 档位后运行下载命令。显式触发 DFU 后有 30 秒不活动窗口；下载
+   开始后计时按 DFU 请求刷新，不会因镜像传输时间超过 30 秒而退出。
 4. 下载 APP 并发送零长度 DNLOAD；入口有效时 Bootloader 自动跳转。
 5. 移除 PC6/PC7 短接或释放后级主控对 PC7 的高电平，否则下一次复位仍会进入 DFU。
 
-SWD 与 USBHS 复用，步骤 2 和 3 仍需手动切换硬件。若切换超过 2 秒且旧 APP 有效，
+SWD 与 USBHS 复用，步骤 2 和 3 仍需手动切换硬件。若切换超过 30 秒且旧 APP 有效，
 设备会先启动旧 APP，需要重新执行 WLINK 复位；旧 APP 无效时设备会一直留在 DFU。
 当前已验证卡死测试 APP 可以下载并运行；尚未把恢复 SWJ 后的 WLINK 复位、DFU 进入、
 重新下载和跳转串成一次完整硬件闭环，因此此流程暂不作为已验证发布能力。
@@ -675,7 +677,8 @@ CH32H417_DFU/
 - 当前通用 CherryUSB port 尚未完成非 EP0 Bulk/Interrupt/Isochronous 验证。
 - USB Full-Speed 强制降速路径尚未做硬件验证。
 - UART4 RX 高电平入口（T20）和完整 WLINK 卡死恢复流程（T23）尚未完成硬件验证。
-- DFU 使用 2 秒协议不活动超时；未完成会话会先取消，APP 无效时不会退出 DFU。
+- DFU 使用协议不活动超时；显式触发为 30 秒，默认 APP 无效兜底为 2 秒。
+  未完成会话会先取消，APP 无效时不会退出 DFU。
 
 生产使用前建议在 APP 镜像中增加独立的完整性元数据、版本策略和启动确认机制。
 

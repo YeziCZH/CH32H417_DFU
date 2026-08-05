@@ -71,15 +71,17 @@ Enter/Space、固定 SRAM magic/reset，或默认 APP 入口无效决定。
 - 兜底入口：默认 APP `0x08004000` 入口越界、未对齐，或首字为 `0xE339E339`、
   `0x00000000`、`0xFFFFFFFF` 时，无条件进入并保持 DFU。
 
-进入 DFU 后采用 2 秒协议不活动超时。每个 DFU class request，包括 GETSTATUS、
-GETSTATE、Download、Upload、CLRSTATUS 和 ABORT，都会重新计时，因此活动传输可持续
-超过 2 秒。超时会取消未完成的 Download/Upload 和未刷新的 RAM cache，并仅尝试
-默认 APP；默认 APP 首字无效时继续保持 DFU。
+进入 DFU 后采用协议不活动超时。未显式触发 DFU、但因默认 APP 无效而进入 DFU 时，
+保持 2 秒超时；由 UART4 RX 高电平、调试串口 Enter/Space 或 SRAM magic 显式触发时，
+超时窗口延长到 30 秒，方便主机枚举、绑定和人工启动下载命令。每个 DFU class
+request，包括 GETSTATUS、GETSTATE、Download、Upload、CLRSTATUS 和 ABORT，都会
+重新计时，因此活动传输可持续超过该窗口。超时会取消未完成的 Download/Upload 和
+未刷新的 RAM cache，并仅尝试默认 APP；默认 APP 首字无效时继续保持 DFU。
 
-若 manifestation 选择的执行入口无效，固件会锁定当前 DFU 会话，不再因 2 秒超时
+若 manifestation 选择的执行入口无效，固件会锁定当前 DFU 会话，不再因不活动超时
 跳回另一个默认 APP。主机必须下载有效镜像并完成新的 manifestation，或复位设备。
 Flash 操作处于错误状态时同样禁止超时启动，主机通过 GETSTATUS 读取错误并用
-CLRSTATUS 恢复后，2 秒不活动计时才重新生效。
+CLRSTATUS 恢复后，不活动计时才重新生效。
 
 主机每次 DNLOAD 或命令后必须循环 GETSTATUS，按照返回的三字节
 `bwPollTimeout` 等待，直到状态成为 `dfuDNLOAD-IDLE`。不要在设备仍为
