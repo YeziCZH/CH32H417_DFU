@@ -11,12 +11,12 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 | 目标芯片 | CH32H417ME，960 KB 内置 Flash，DBMODE=1 |
 | Bootloader 保留空间 | 16 KB |
 | 项目许可证 | Apache License 2.0（第三方组件除外） |
-| 当前 Release 二进制 | 15772 字节，严格限制在 16 KB 内 |
+| 当前 Release 二进制 | 15828 字节，严格限制在 16 KB 内 |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DFU 传输块 | 512 字节 |
 | Flash 擦除粒度 | 8 KB |
 | Flash 编程粒度 | 256 字节快速编程页 |
-| 硬件验证 | T01-T19、T21、T22、T24 已通过；T20 待测；T23 已验证 PC8 物理复位子步骤 |
+| 硬件验证 | T01-T19、T21、T22 已通过；T20/T24 待测；T23 已验证 PC8 物理复位子步骤 |
 | CherryUSB port | 当前 DFU/EP0 用途已验证；通用非控制端点验证待补充 |
 | 512 KiB 下载性能 | 全量变化 119.0 KiB/s；完全相同差分 180.1 KiB/s |
 
@@ -235,19 +235,18 @@ DfuSe interface string：
 ## Boot 流程
 
 1. V3F 启动并初始化系统时钟、延时和 USART1。
-2. 固件打开 500 ms 启动窗口，便于调试器连接，也可通过调试串口请求 DFU。
-3. 检查固定 SRAM magic：地址 `0x201100FC`，值 `0x44465521`；命中后先清零。
-4. 检查 UART4 板级引脚：PC6/TX 持续输出高电平，PC7/RX 为下拉输入。PC6 与
+2. 检查固定 SRAM magic：地址 `0x201100FC`，值 `0x44465521`；命中后先清零。
+3. 检查 UART4 板级引脚：PC6/TX 持续输出高电平，PC7/RX 为下拉输入。PC6 与
    PC7 短接，或由后级主控把 PC7 拉高，都会触发 DFU；PC7 悬空不会误触发。
-5. 启动窗口内调试串口 USART1/COM4 收到 Enter（`0x0D` 或 `0x0A`）或空格
-   （`0x20`）也会触发 DFU；APP 已经运行后需由 APP 写 magic/reset。
-6. 任一入口命中时初始化 CherryUSB USBHS Device；默认 APP 无效时也直接进入 DFU。
-7. DFU class 请求每次都会刷新不活动计时器，正常 Download、Upload 和 GETSTATUS
+4. 无论是否检测到 trigger、默认 APP 是否有效，都立即初始化 CherryUSB USBHS
+   Device 并进入 DFU；trigger 只决定不活动超时时长，不再决定是否进入 DFU。
+5. 无显式 trigger 时提供 3 秒 DFU 不活动窗口。窗口内 USART1/COM4 收到 Enter
+   （`0x0D` 或 `0x0A`）或空格（`0x20`），可把当前窗口提升为 30 秒。
+6. UART4 RX 高电平、调试串口按键或 SRAM magic 显式触发时使用 30 秒超时。
+7. 每个 DFU class 请求都会刷新不活动计时器，正常 Download、Upload 和 GETSTATUS
    轮询不会在传输中途退出。
-8. 未显式触发、但默认 APP 无效而进入 DFU 时使用 2 秒超时；UART4 RX、调试串口或
-   SRAM magic 显式触发 DFU 时使用 30 秒超时，便于人工启动主机下载。
-9. 超时没有 DFU 请求时取消未完成会话并尝试默认 APP；默认 APP 无效则继续 DFU。
-10. 成功 manifestation 后跳到默认或通过 `SET_EXEC_ADDRESS` 指定的 APP；指定入口
+8. 超时没有 DFU 请求时取消未完成会话并尝试默认 APP；默认 APP 无效则继续 DFU。
+9. 成功 manifestation 后跳到默认或通过 `SET_EXEC_ADDRESS` 指定的 APP；指定入口
    无效时恢复 `dfuIDLE` 并禁止不活动超时跳回其他 APP，直到有效 manifestation 或复位。
    Flash 错误状态也不会触发超时启动，需由主机先执行 CLRSTATUS 恢复。
 
@@ -330,8 +329,8 @@ cmake --build build -- -j8
 - `build/ch32h417_dfu.lst`：反汇编列表。
 - `build/ch32h417_dfu.map`：链接映射。
 
-当前 Release `.bin` 为 15772 字节，满足 16 KB 限制。链接脚本已将
-`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败；当前剩余 612 字节。
+当前 Release `.bin` 为 15828 字节，满足 16 KB 限制。链接脚本已将
+`FLASH LENGTH` 设为 16 KB，固件超限时链接会直接失败；当前剩余 556 字节。
 
 ### 调试构建
 
@@ -349,7 +348,7 @@ cmake --build build -- -j8
 
 调试构建也使用同一 16 KB 链接边界。详细运行状态另外保留在
 `.noinit_dfu` 的 `dbg_dfu[6]` 中，可通过 SWD 读取。当前同时开启两个调试
-选项时 `.bin` 为 16316 字节，也通过同一 16 KB 链接边界，剩余 68 字节。
+选项时 `.bin` 为 16372 字节，也通过同一 16 KB 链接边界，剩余 12 字节。
 
 UART Flash 短标签：`P*` 表示 prepare，`E*` 表示 erase，`F*` 表示
 cache flush，`QW/QE` 表示写/擦除入队，`W*/E*` 中的 `T/A/B` 分别表示
@@ -709,8 +708,8 @@ CH32H417_DFU/
 - 当前通用 CherryUSB port 尚未完成非 EP0 Bulk/Interrupt/Isochronous 验证。
 - USB Full-Speed 强制降速路径尚未做硬件验证。
 - UART4 RX 高电平入口（T20）和完整 WLINK 卡死恢复流程（T23）尚未完成硬件验证。
-- DFU 使用协议不活动超时；显式触发为 30 秒，默认 APP 无效兜底为 2 秒。
-  未完成会话会先取消，APP 无效时不会退出 DFU。
+- 每次启动都会先枚举 DFU；无显式 trigger 时为 3 秒不活动窗口，显式触发为
+  30 秒。未完成会话会先取消，APP 无效时不会退出 DFU。
 
 生产使用前建议在 APP 镜像中增加独立的完整性元数据、版本策略和启动确认机制。
 

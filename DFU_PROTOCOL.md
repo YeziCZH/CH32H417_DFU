@@ -56,27 +56,28 @@ Class Interface 的 Host-to-Device `bmRequestType` 为 `0x21`，Device-to-Host �
 
 设备只枚举 Protocol `0x02` 的 DFU-mode interface，没有 Protocol `0x01` Runtime
 interface。尽管当前功能描述符的 `bmAttributes` 数值包含 Will Detach，主机不应把
-DETACH 当作可用的 Runtime 切换入口。进入 DFU 由 UART4 RX 高电平、调试串口
-Enter/Space、固定 SRAM magic/reset，或默认 APP 入口无效决定。
+DETACH 当作可用的 Runtime 切换入口。设备每次启动都会先进入并枚举 DFU；
+UART4 RX 高电平、调试串口 Enter/Space 和固定 SRAM magic/reset 只决定是否把
+默认不活动窗口延长到 30 秒，不再决定是否初始化 USB。
 
-## DFU 入口和不活动超时
+## DFU trigger 和不活动超时
 
 - 硬件入口：Bootloader 让 UART4 TX (PC6) 持续输出高电平，并把 RX (PC7) 配置为
   下拉输入。短接 PC6/PC7 或由后级主控把 PC7 拉高时进入 DFU；PC7 悬空时保持低电平。
-- 调试串口入口：Bootloader 启动 500 ms 窗口内，USART1/COM4 RX 收到 Enter
-  （`0x0D` 或 `0x0A`）或空格（`0x20`）时进入 DFU。APP 已经运行后需要 APP
-  自行写 magic 并复位。
+- 调试串口 trigger：默认 3 秒 DFU 窗口内，USART1/COM4 RX 收到 Enter
+  （`0x0D` 或 `0x0A`）或空格（`0x20`）时，将不活动窗口延长到 30 秒。
+  APP 已经运行后需要 APP 自行写 magic 并复位。
 - 软件入口：APP 向 `0x201100FC` 写入 `0x44465521`，执行 RISC-V `fence rw, rw`
   后调用 `NVIC_SystemReset()`。Bootloader 读取后立即清除 magic。
-- 兜底入口：默认 APP `0x08004000` 入口越界、未对齐，或首字为 `0xE339E339`、
-  `0x00000000`、`0xFFFFFFFF` 时，无条件进入并保持 DFU。
+- 无效 APP 保护：默认 APP `0x08004000` 入口越界、未对齐，或首字为
+  `0xE339E339`、`0x00000000`、`0xFFFFFFFF` 时，超时后继续保持 DFU。
 
-进入 DFU 后采用协议不活动超时。未显式触发 DFU、但因默认 APP 无效而进入 DFU 时，
-保持 2 秒超时；由 UART4 RX 高电平、调试串口 Enter/Space 或 SRAM magic 显式触发时，
-超时窗口延长到 30 秒，方便主机枚举、绑定和人工启动下载命令。每个 DFU class
-request，包括 GETSTATUS、GETSTATE、Download、Upload、CLRSTATUS 和 ABORT，都会
-重新计时，因此活动传输可持续超过该窗口。超时会取消未完成的 Download/Upload 和
-未刷新的 RAM cache，并仅尝试默认 APP；默认 APP 首字无效时继续保持 DFU。
+设备启动后立即初始化 USBHS DFU，并采用协议不活动超时。未显式触发时窗口为 3 秒；
+由 UART4 RX 高电平、调试串口 Enter/Space 或 SRAM magic 显式触发时，窗口为
+30 秒，方便主机枚举、绑定和人工启动下载命令。每个 DFU class request，包括
+GETSTATUS、GETSTATE、Download、Upload、CLRSTATUS 和 ABORT，都会重新计时，因此
+活动传输可持续超过该窗口。超时会取消未完成的 Download/Upload 和未刷新的 RAM
+cache，并仅尝试默认 APP；默认 APP 首字无效时继续保持 DFU。
 
 若 manifestation 选择的执行入口无效，固件会锁定当前 DFU 会话，不再因不活动超时
 跳回另一个默认 APP。主机必须下载有效镜像并完成新的 manifestation，或复位设备。

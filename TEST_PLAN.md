@@ -10,7 +10,7 @@
 | 芯片 | CH32H417ME V3F，960 KB Flash，DBMODE=1 |
 | Bootloader | `0x08000000..0x08003FFF`，16 KB |
 | APP | `0x08004000..0x080EFFFF`，944 KB |
-| Release 镜像 | `build/ch32h417_dfu.bin`，15772 字节（上限 16384） |
+| Release 镜像 | `build/ch32h417_dfu.bin`，15828 字节（上限 16384） |
 | USB | `0483:DF11`，USB High-Speed，WinUSB |
 | DfuSe 描述符 | `@Flash/0x08004000/118*8Kg` |
 | 主机 | Windows、Python 3.11、PyUSB、libusb-package |
@@ -30,9 +30,11 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 - T19 已记录 512 KiB 全量变化、完全相同和三扇区变化的性能基线。
 - CherryUSB port 对本 DFU/EP0 用途已验证；通用非 EP0 端点不在本测试计划的
   已完成范围内。
-- 固定 magic 和调试串口 Enter/Space 已于 2026-08-04 通过上板验证；不活动超时策略
-  已于 2026-08-05 改为显式触发 30 秒、兜底 DFU 2 秒，并通过 T22 上板验证。
-  UART4 RX 高电平入口仍待单独验证，完整 WLINK 卡死恢复流程按当前计划暂缓。
+- 固定 magic 和调试串口 Enter/Space 的旧入口逻辑已于 2026-08-04 通过上板验证。
+  2026-08-06 已改为每次启动先枚举 DFU：无 trigger 为 3 秒不活动窗口，显式
+  trigger 为 30 秒。T22 已通过新逻辑上板复测：无 trigger、默认 APP 无效时，
+  USBHS 成功配置，3 秒超时后继续保持 DFU。T24 的动态调试串口 trigger 仍需复测。
+  UART4 RX 高电平 trigger 仍待单独验证，完整 WLINK 卡死恢复流程按当前计划暂缓。
 - USB deinit 已增加恢复 SWJ 配置的处理并通过构建；T15/T16 的 APP 跳转已验证，
   但新增 SWJ 恢复处理尚未完成 T23 硬件闭环。
 - WCH-LinkE PC8 对外复位引脚已连接目标 nRST；`reset pin-rst --hold-ms 500`
@@ -46,7 +48,7 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 | 跳转验证 | T15、T16 | 需要准备测试 APP，并在 APP 运行后恢复 DFU |
 | 断电恢复 | T18 | 需要按脚本提示人工断电和恢复供电 |
 | 性能基线 | T19 | 否，但会覆盖指定 APP 测试区域 |
-| 启动入口 | T20-T22、T24 | T20 仍待硬件验证；T21/T22/T24 已通过 |
+| 启动入口 | T20-T22、T24 | T21/T22 已通过；T20/T24 待测 |
 | 卡死恢复 | T23 | PC8 pin-reset 子步骤已验证；完整恢复链路仍需人工切换 SWD/USBHS 后另测 |
 | 可选链路 | T03 Full-Speed | 需要 Full-Speed hub 或等效链路 |
 
@@ -57,7 +59,7 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 
 | ID | 测试项目 | 方法与通过条件 | 当前结果 |
 |---|---|---|---|
-| T01 | 固件尺寸 | Release `.bin` 不超过 16 KB；链接脚本必须在超限时失败 | PASS（15772 B） |
+| T01 | 固件尺寸 | Release `.bin` 不超过 16 KB；链接脚本必须在超限时失败 | PASS（15828 B） |
 | T02 | 目标容量 | 运行时目标检查接受有效 Flash 操作，末扇区 `0x080EE000..0x080EFFFF` 可擦写回读 | PASS |
 | T03 | USB 枚举 | 枚举为 `0483:DF11`，High-Speed，配置和控制请求无异常 Stall；可选 Full-Speed 路径另测 | PASS (HS)，FS 未跑 |
 | T04 | 擦除值 | 擦除 `0x08004000` 后 Upload，内容必须为 `39 E3 39 E3 ...`，即字 `0xE339E339` | PASS |
@@ -79,9 +81,28 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 | T19 | 下载性能 | 512 KiB 镜像测试全量变化、完全相同和三扇区变化，并在每组后完整回读校验 | PASS，见下表 |
 | T20 | UART4 电平入口 | PC7 悬空/低电平时有效 APP 正常启动；PC6/PC7 短接或后级主控拉高 PC7 时进入 DFU；PC6 始终为高 | 待硬件验证 |
 | T21 | Magic 入口 | APP 写 `0x201100FC=0x44465521` 后复位进入 DFU；magic 被一次性清除 | PASS |
-| T22 | 不活动超时 | 默认 APP 无效兜底 DFU 保持 2 秒节奏；显式触发 DFU 后约 30 秒才退出；持续请求和长下载不退出；默认或指定入口无效时继续枚举 | PASS |
+| T22 | 不活动超时 | 有效 APP 也先枚举 DFU；无 trigger 时约 3 秒不活动后跳转；显式 trigger 为 30 秒；持续请求和长下载不退出；默认或指定入口无效时继续枚举 | PASS（2026-08-06 启动窗口回归） |
 | T23 | 卡死恢复 | WLINK PC8 pin-reset 复位、UART4 RX 高电平进入、下载 APP、manifestation 跳转完整恢复 | PARTIAL：PC8 pin-reset 已由 COM4 启动日志验证；完整闭环未完成 |
-| T24 | 调试串口入口 | 启动 500 ms 窗口内向 COM4 发送 Enter 或空格进入 DFU；窗口外 APP 已运行时不由 Bootloader 监听 | PASS（Enter/Space） |
+| T24 | 调试串口 trigger | 默认 3 秒 DFU 窗口内向 COM4 发送 Enter 或空格，将不活动超时提升到 30 秒；APP 已运行后不由 Bootloader 监听 | 待按新启动逻辑上板复测 |
+
+## T22 启动窗口回归
+
+2026-08-06 使用无 trigger、默认 APP 无效的镜像复测。COM4 记录如下：
+
+```text
+[BOOT] CH32H417 DFU
+[BOOT] DFU window: 3s
+[BOOT] Invalid APP; DFU stays active
+[DFU] Entering DFU mode...
+[DFU] USBHS DFU ready
+[DFU] Protocol inactivity timeout: 3s
+[USB] Configured
+[DFU] Staying in DFU
+```
+
+该记录确认设备没有因无 trigger 跳过 USB：USBHS 已成功配置，3 秒不活动超时生效，
+且默认 APP 无效时不会退出 DFU。显式 trigger 的 30 秒窗口、活动请求刷新计时和
+无效入口保护沿用此前已通过的 T22 测试结果。
 
 ## T19 性能基线
 

@@ -12,8 +12,7 @@
 #include <string.h>
 
 #define APP_START_ADDR          DFU_FLASH_APP_BASE
-#define DFU_WAIT_MS             3000u
-#define DFU_DEFAULT_INACTIVITY_MS   2000u
+#define DFU_DEFAULT_INACTIVITY_MS   3000u
 #define DFU_TRIGGER_INACTIVITY_MS   30000u
 
 #define DFU_UART_PORT           GPIOC
@@ -24,9 +23,8 @@
 __attribute__((section(".dfu_magic"))) static volatile uint32_t g_dfu_magic;
 static uint8_t g_usb_active;
 
-static void dfu_mode(uint32_t inactivity_timeout_ms);
+static void dfu_mode(int triggered);
 static void jump_to_app(uint32_t physical_addr);
-static int  wait_for_dfu_entry(void);
 static int  check_dfu_entry(void);
 static int  debug_uart_key_pressed(void);
 static int  app_entry_valid(uint32_t physical_addr);
@@ -44,6 +42,8 @@ __attribute__((weak)) uint32_t dfu_usb_get_exec_address(void) { return APP_START
 __attribute__((weak)) int  dfu_usb_timeout_can_boot(void) { return 1; }
 
 int main(void) {
+    int triggered;
+
     SystemInit(); SystemAndCoreClockUpdate();
     Delay_Init();
     dfu_entry_gpio_init();
@@ -51,15 +51,16 @@ int main(void) {
 
     serial_puts("\r\n[BOOT] CH32H417 DFU\r\n");
 
-    {
-        int triggered = wait_for_dfu_entry();
-        if (triggered || !app_entry_valid(APP_START_ADDR)) {
-            if (!triggered)
-                serial_puts("[BOOT] Default APP is invalid; staying in DFU\r\n");
-            dfu_mode(triggered ? DFU_TRIGGER_INACTIVITY_MS :
-                       DFU_DEFAULT_INACTIVITY_MS);
-        }
+    triggered = check_dfu_entry();
+    if (!triggered && debug_uart_key_pressed()) {
+        serial_puts("[BOOT] DFU entry: debug UART key\r\n");
+        triggered = 1;
     }
+    if (!triggered)
+        serial_puts("[BOOT] DFU window: 3s\r\n");
+    if (!app_entry_valid(APP_START_ADDR))
+        serial_puts("[BOOT] Invalid APP; DFU stays active\r\n");
+    dfu_mode(triggered);
 
     uint32_t app_entry = dfu_usb_get_exec_address();
     if (app_entry < APP_START_ADDR || app_entry >= DFU_FLASH_APP_END ||
@@ -70,25 +71,6 @@ int main(void) {
     serial_puts("...\r\n\r\n");
     jump_to_app(app_entry);
     while (1) { }
-}
-
-static int wait_for_dfu_entry(void)
-{
-    uint32_t waited;
-
-    for (waited = 0; waited < DFU_WAIT_MS; waited++) {
-        if (check_dfu_entry())
-            return 1;
-        if (debug_uart_key_pressed()) {
-            serial_puts("[BOOT] DFU entry: debug UART key\r\n");
-            return 1;
-        }
-        Delay_Ms(1);
-    }
-    if (check_dfu_entry())
-        return 1;
-    serial_puts("[BOOT] No DFU entry trigger; booting APP\r\n");
-    return 0;
 }
 
 static int check_dfu_entry(void) {
@@ -133,7 +115,11 @@ static void dfu_entry_gpio_init(void)
     Delay_Ms(5);
 }
 
-static void dfu_mode(uint32_t inactivity_timeout_ms) {
+static void dfu_mode(int triggered) {
+    uint32_t inactivity_timeout_ms = triggered ?
+                                     DFU_TRIGGER_INACTIVITY_MS :
+                                     DFU_DEFAULT_INACTIVITY_MS;
+
     serial_puts("[DFU] Entering DFU mode...\r\n");
     dfu_usb_init();
     g_usb_active = 1;
@@ -152,6 +138,19 @@ static void dfu_mode(uint32_t inactivity_timeout_ms) {
             inactive_ms = 0;
             Delay_Ms(1);
             continue;
+        }
+        if (!triggered) {
+            if (check_dfu_entry()) {
+                triggered = 1;
+            } else if (debug_uart_key_pressed()) {
+                serial_puts("[BOOT] DFU entry: debug UART key\r\n");
+                triggered = 1;
+            }
+            if (triggered) {
+                inactivity_timeout_ms = DFU_TRIGGER_INACTIVITY_MS;
+                inactive_ms = 0;
+                serial_puts("[DFU] Triggered timeout: 30s\r\n");
+            }
         }
         Delay_Ms(1);
         if (activity != usbd_dfu_get_activity_count()) {
@@ -187,7 +186,7 @@ static void jump_to_app(uint32_t physical_addr)
 {
     if (!app_entry_valid(physical_addr)) {
         serial_puts("[BOOT] APP entry is invalid; entering DFU\r\n");
-        dfu_mode(DFU_DEFAULT_INACTIVITY_MS);
+        dfu_mode(0);
         physical_addr = dfu_usb_get_exec_address();
     }
 
