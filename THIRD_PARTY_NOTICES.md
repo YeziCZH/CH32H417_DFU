@@ -27,10 +27,12 @@ WCH 文件保留原始版权声明。使用和再分发时应同时遵守 WCH �
 
 ## wlink
 
-- 名称：ch32-rs/wlink 0.1.2，Windows x86 native-driver build
+- 名称：ch32-rs/wlink 0.1.2+pinrst.3，Windows x86 native-driver build
 - 上游项目：https://github.com/ch32-rs/wlink
 - 许可证：MIT OR Apache-2.0
 - 本仓库范围：`tools/wlink/wlink.exe` 及其上游说明和许可证
-- SHA-256：`55A20C7D4B70E6A5729A901CBC0EF3BEA4D6222D6BE824F9635AE28C674745F4`
+- 本项目修改：增加不连接目标芯片的 `reset pin-rst [--hold-ms]`，按低电平、
+  高电平、浮空时序控制 WCH-LinkE 主控 PC8 对外复位引脚
+- SHA-256：`A3572CEF4D958D4507ACB94764EAD4B73D7061D5C243470C4EE20849885D35DB`
 
 许可证全文见 `tools/wlink/LICENSE-MIT` 和 `tools/wlink/LICENSE-APACHE`。

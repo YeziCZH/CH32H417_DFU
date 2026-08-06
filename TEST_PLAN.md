@@ -35,6 +35,8 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
   UART4 RX 高电平入口仍待单独验证，完整 WLINK 卡死恢复流程按当前计划暂缓。
 - USB deinit 已增加恢复 SWJ 配置的处理并通过构建；T15/T16 的 APP 跳转已验证，
   但新增 SWJ 恢复处理尚未完成 T23 硬件闭环。
+- WCH-LinkE PC8 对外复位引脚已连接目标 nRST；`reset pin-rst --hold-ms 500`
+  已由 COM4 新启动日志确认真实复位。该结果只完成 T23 的物理复位子步骤。
 
 ## 测试分组
 
@@ -78,7 +80,7 @@ DBMODE bit 28。固件仍保留运行时目标检查，异常目标会返回 `er
 | T20 | UART4 电平入口 | PC7 悬空/低电平时有效 APP 正常启动；PC6/PC7 短接或后级主控拉高 PC7 时进入 DFU；PC6 始终为高 | 待硬件验证 |
 | T21 | Magic 入口 | APP 写 `0x201100FC=0x44465521` 后复位进入 DFU；magic 被一次性清除 | PASS |
 | T22 | 不活动超时 | 默认 APP 无效兜底 DFU 保持 2 秒节奏；显式触发 DFU 后约 30 秒才退出；持续请求和长下载不退出；默认或指定入口无效时继续枚举 | PASS |
-| T23 | 卡死恢复 | WLINK 复位、UART4 RX 高电平进入、下载 APP、manifestation 跳转完整恢复 | 暂缓，未完成硬件闭环 |
+| T23 | 卡死恢复 | WLINK 复位、UART4 RX 高电平进入、下载 APP、manifestation 跳转完整恢复 | PARTIAL：PC8 pin-reset 已验证；完整闭环未完成 |
 | T24 | 调试串口入口 | 启动 500 ms 窗口内向 COM4 发送 Enter 或空格进入 DFU；窗口外 APP 已运行时不由 Bootloader 监听 | PASS（Enter/Space） |
 
 ## T19 性能基线

@@ -401,6 +401,17 @@ powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 `
   -d 0 --chip CH32H41X status
 ```
 
+无需连接 SWD、只通过物理 nRST 复位目标板：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 `
+  reset pin-rst --hold-ms 500
+```
+
+该扩展直接控制 WCH-LinkE 主控的 PC8 对外复位引脚；必须将 PC8 对应的 RST 输出
+连接到目标 CH32H417 的 nRST。命令按拉低、拉高、浮空的顺序执行，不会先连接目标
+SWD。WCH-LinkE v2.22 上板验证时，COM4 随即重新输出 Bootloader 和 APP 启动日志。
+
 工具来源、版本、SHA-256 和许可证见 [tools/wlink/README.md](tools/wlink/README.md)
 及 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
@@ -409,6 +420,7 @@ powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 `
 
 USBHS 初始化期间会关闭 SWJ，因此设备仍运行在 DFU 且硬件处于 USBHS 档位时，
 独立执行 `wlink reset halt` 可能返回 WCH-Link underlying protocol error `0x55`。
+已连接 PC8/RST 时可改用 `reset pin-rst`，该命令不依赖 SWD attach。
 当前 port 会在 USB deinit、跳转 APP 前恢复 SWJ 配置；该恢复逻辑已通过构建，完整
 WLINK 卡死恢复硬件闭环仍列为 T23 待测。
 
@@ -706,6 +718,8 @@ CH32H417_DFU/
 ### wlink 返回 protocol error 0x55
 
 - 确认硬件开关已切到 SWD。
+- 如果只需复位且 WCH-LinkE PC8/RST 已连接，使用
+  `scripts/wlink.ps1 reset pin-rst --hold-ms 500`，无需 SWD attach。
 - 使用 `scripts/flash.ps1` 的 pin-rst erase 流程。
 - 不要先执行独立的 `wlink reset halt`。
 
