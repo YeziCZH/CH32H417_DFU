@@ -16,7 +16,7 @@ CH32H417 的物理编程地址与零基执行 alias 跳转。
 | DFU 传输块 | 512 字节 |
 | Flash 擦除粒度 | 8 KB |
 | Flash 编程粒度 | 256 字节快速编程页 |
-| 硬件验证 | T01-T19、T21、T22、T24 已通过；T20、T23 尚未完成 |
+| 硬件验证 | T01-T19、T21、T22、T24 已通过；T20 待测；T23 已验证 PC8 物理复位子步骤 |
 | CherryUSB port | 当前 DFU/EP0 用途已验证；通用非控制端点验证待补充 |
 | 512 KiB 下载性能 | 全量变化 119.0 KiB/s；完全相同差分 180.1 KiB/s |
 
@@ -410,7 +410,19 @@ powershell -ExecutionPolicy Bypass -File scripts/wlink.ps1 `
 
 该扩展直接控制 WCH-LinkE 主控的 PC8 对外复位引脚；必须将 PC8 对应的 RST 输出
 连接到目标 CH32H417 的 nRST。命令按拉低、拉高、浮空的顺序执行，不会先连接目标
-SWD。WCH-LinkE v2.22 上板验证时，COM4 随即重新输出 Bootloader 和 APP 启动日志。
+SWD，也不要求目标芯片当前可被 SWD attach。WCH-LinkE v2.22 上板验证时，COM4
+随即重新输出 Bootloader 和 APP 启动日志。
+
+PC8 外接复位的适用边界：
+
+- 适合 APP 卡死、SWD 被 USBHS 复用占用、`wlink reset halt` 报 `0x55` 时先把
+  目标拉回 Bootloader。
+- 只负责产生目标 nRST 脉冲，不会自动完成 DFU 入口触发、USBHS/SWD 硬件档位切换
+  或 APP 下载。
+- 如果需要让复位后稳定停在 DFU，应配合 UART4 RX 高电平入口、magic word 入口、
+  或保持 APP 无效入口；否则有效 APP 会在启动延时后正常跳转。
+- 调试该功能时不要用 `status`、`dmstatus havereset` 作为唯一依据，应以 COM4 新
+  Bootloader 日志或示波器/逻辑分析仪观测 nRST 为准。
 
 工具来源、版本、SHA-256 和许可证见 [tools/wlink/README.md](tools/wlink/README.md)
 及 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
@@ -430,17 +442,20 @@ WLINK 卡死恢复硬件闭环仍列为 T23 待测。
 
 1. 短接 PC6 (UART4 TX) 与 PC7 (UART4 RX) 并保持短接；也可以由后级主控持续
    拉高 PC7。
-2. 切到 SWD 档位，通过 WLINK/NRST 复位设备；若 Bootloader 本身损坏，执行
-   `scripts/flash.ps1` 重新烧录 Bootloader。
+2. 通过 WCH-LinkE PC8/RST 执行 `scripts/wlink.ps1 reset pin-rst --hold-ms 500`
+   复位设备；该复位子步骤已由 COM4 启动日志验证。若 Bootloader 本身损坏，切到
+   SWD 档位后执行 `scripts/flash.ps1` 重新烧录 Bootloader。
 3. 切到 USBHS/DFU 档位后运行下载命令。显式触发 DFU 后有 30 秒不活动窗口；下载
    开始后计时按 DFU 请求刷新，不会因镜像传输时间超过 30 秒而退出。
 4. 下载 APP 并发送零长度 DNLOAD；入口有效时 Bootloader 自动跳转。
 5. 移除 PC6/PC7 短接或释放后级主控对 PC7 的高电平，否则下一次复位仍会进入 DFU。
 
-SWD 与 USBHS 复用，步骤 2 和 3 仍需手动切换硬件。若切换超过 30 秒且旧 APP 有效，
+SWD 与 USBHS 复用，重新烧录 Bootloader 和 USB DFU 下载之间仍需手动切换硬件。
+若切换超过 30 秒且旧 APP 有效，
 设备会先启动旧 APP，需要重新执行 WLINK 复位；旧 APP 无效时设备会一直留在 DFU。
-当前已验证卡死测试 APP 可以下载并运行；尚未把恢复 SWJ 后的 WLINK 复位、DFU 进入、
-重新下载和跳转串成一次完整硬件闭环，因此此流程暂不作为已验证发布能力。
+当前已验证卡死测试 APP 可以下载并运行，也已验证 PC8 pin-reset 可真实复位目标；
+尚未把 UART4 触发 DFU、重新下载和跳转串成一次完整硬件闭环，因此此流程暂不作为
+完整已验证发布能力。
 
 ## Windows 主机环境
 
